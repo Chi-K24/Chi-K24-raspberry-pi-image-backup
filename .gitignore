@@ -1,0 +1,15 @@
+# Never commit backup artifacts.
+*.img
+*.img.*
+*.raw
+*.iso
+*.gz
+*.zst
+*.sha256
+
+# Local overrides and temporary files.
+.env
+*.local
+*.log
+*.tmp
+*~
