@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+readonly CONFIG_FILE="${RPI_IMAGE_BACKUP_CONFIG:-/etc/rpi-image-backup.conf}"
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "This script must run as root." >&2
+    exit 1
+fi
+
+if [[ ! -r "${CONFIG_FILE}" ]]; then
+    echo "Configuration file not found: ${CONFIG_FILE}" >&2
+    exit 1
+fi
+
+# The root-owned configuration contains filesystem paths and simple settings.
+# shellcheck source=/dev/null
+source "${CONFIG_FILE}"
+
+: "${IMAGE_PATH:?Set IMAGE_PATH in ${CONFIG_FILE}}"
+: "${EXCLUDE_FILE:?Set EXCLUDE_FILE in ${CONFIG_FILE}}"
+: "${BACKUP_MOUNT:?Set BACKUP_MOUNT in ${CONFIG_FILE}}"
+: "${EXPECTED_LABEL_PATH:?Set EXPECTED_LABEL_PATH in ${CONFIG_FILE}}"
+
+DOCKER_STOP_TIMEOUT="${DOCKER_STOP_TIMEOUT:-60}"
+LOCK_FILE="${LOCK_FILE:-/run/lock/rpi-image-backup.lock}"
+
+for required_command in docker findmnt flock image-backup mountpoint readlink sync; do
+    if ! command -v "${required_command}" >/dev/null 2>&1; then
+        echo "Required command not found: ${required_command}" >&2
+        exit 1
+    fi
+done
+
+exec 9>"${LOCK_FILE}"
+flock -n 9 || {
+    echo "Another image backup is already running." >&2
+    exit 1
+}
+
+mountpoint -q "${BACKUP_MOUNT}" || {
+    echo "${BACKUP_MOUNT} is not mounted. Aborting." >&2
+    exit 1
+}
+
+[[ -e "${EXPECTED_LABEL_PATH}" ]] || {
+    echo "Expected backup device was not found: ${EXPECTED_LABEL_PATH}" >&2
+    exit 1
+}
+
+expected_device="$(readlink -f "${EXPECTED_LABEL_PATH}")"
+actual_source="$(findmnt -rn -T "${BACKUP_MOUNT}" -o SOURCE)"
+actual_device="$(readlink -f "${actual_source}")"
+
+[[ "${actual_device}" == "${expected_device}" ]] || {
+    echo "Wrong device mounted at ${BACKUP_MOUNT}. Aborting." >&2
+    exit 1
+}
+
+[[ -f "${IMAGE_PATH}" ]] || {
+    echo "Backup image not found: ${IMAGE_PATH}" >&2
+    exit 1
+}
+
+[[ -f "${EXCLUDE_FILE}" ]] || {
+    echo "Exclusion file not found: ${EXCLUDE_FILE}" >&2
+    exit 1
+}
+
+docker info >/dev/null 2>&1 || {
+    echo "Docker is unavailable. Aborting." >&2
+    exit 1
+}
+
+mapfile -t running_containers < <(docker ps --format '{{.Names}}')
+
+restart_containers() {
+    local backup_status=$?
+    trap - EXIT INT TERM
+
+    if ((${#running_containers[@]})); then
+        echo "Restarting containers..."
+        if ! docker start "${running_containers[@]}" >/dev/null; then
+            echo "One or more containers failed to restart." >&2
+            ((backup_status == 0)) && backup_status=1
+        fi
+    fi
+
+    exit "${backup_status}"
+}
+
+trap restart_containers EXIT INT TERM
+
+if ((${#running_containers[@]})); then
+    echo "Stopping containers..."
+    docker stop -t "${DOCKER_STOP_TIMEOUT}" "${running_containers[@]}"
+fi
+
+sync
+
+echo "Updating ${IMAGE_PATH}..."
+image-backup \
+    --options "--exclude-from=${EXCLUDE_FILE}" \
+    "${IMAGE_PATH}"
+
+sync
+
+date --iso-8601=seconds > "${IMAGE_PATH}.last-success"
+echo "Image update completed successfully."
