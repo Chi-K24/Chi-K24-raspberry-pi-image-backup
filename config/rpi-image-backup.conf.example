@@ -1,0 +1,17 @@
+# Existing compact image that image-backup will update.
+IMAGE_PATH="/mnt/backup/pi-backups/raspberry-pi-current.img"
+
+# File containing rsync exclusion patterns.
+EXCLUDE_FILE="/etc/image-backup/excludes.txt"
+
+# Mount point that must contain IMAGE_PATH.
+BACKUP_MOUNT="/mnt/backup"
+
+# Stable link identifying the expected destination device.
+EXPECTED_LABEL_PATH="/dev/disk/by-label/BACKUP"
+
+# Seconds Docker may use to stop each container cleanly.
+DOCKER_STOP_TIMEOUT=60
+
+# Prevent overlapping manual and scheduled runs.
+LOCK_FILE="/run/lock/rpi-image-backup.lock"
