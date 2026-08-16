@@ -1,0 +1,6 @@
+# External libraries and backup destinations mounted below /srv are not
+# automatically excluded by image-backup. Replace these examples with the
+# mount paths used on your Pi.
+/srv/media-library
+/srv/filebrowser/external-storage
+/srv/filebrowser/backup-drive
