@@ -96,7 +96,7 @@ Clone this repository and run the installer:
 ```bash
 git clone https://github.com/Chi-K24/Chi-K24-raspberry-pi-image-backup.git raspberry-pi-image-backup
 cd raspberry-pi-image-backup
-sudo ./scripts/install.sh
+sudo bash scripts/install.sh
 ```
 
 Edit the installed configuration:
