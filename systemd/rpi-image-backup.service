@@ -1,0 +1,14 @@
+[Unit]
+Description=Update Raspberry Pi system image
+Wants=docker.service
+After=docker.service
+ConditionFileIsExecutable=/usr/local/sbin/image-backup
+ConditionFileIsExecutable=/usr/local/sbin/rpi-image-backup-weekly
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rpi-image-backup-weekly
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=infinity
